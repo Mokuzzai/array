@@ -84,6 +84,8 @@ pub type Array3<T, const A: usize, const B: usize, const C: usize> = Axis<Array2
 pub type Array4<T, const A: usize, const B: usize, const C: usize, const D: usize> =
 	Axis<Array3<T, A, B, C>, 4, D>;
 
+/// Base trait implemented by all [`Array`]s
+///
 /// # Safety
 ///
 /// The safety requirements of this trait are unspecified and implementing it is unsafe
@@ -124,6 +126,8 @@ pub unsafe trait Array: Sized {
 	}
 }
 
+/// [`Array`] with a higher dimension
+///
 /// # Safety
 ///
 /// The safety requirements of this trait are unspecified and implementing it is unsafe
@@ -132,6 +136,8 @@ pub unsafe trait Higher {
 	type Higher<const N: usize>;
 }
 
+/// [`Array`] with a lower dimension
+///
 /// # Safety
 ///
 /// The safety requirements of this trait are unspecified and implementing it is unsafe
@@ -143,6 +149,8 @@ pub unsafe trait Lower {
 	fn lower_mut(&mut self, axis: usize) -> Option<&mut Self::Lower>;
 }
 
+/// Allow indexing into an [`Array`]
+///
 /// # Safety
 ///
 /// The safety requirements of this trait are unspecified and implementing it is unsafe
