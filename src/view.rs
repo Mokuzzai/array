@@ -6,15 +6,16 @@ use crate::Axies;
 use crate::Shape;
 
 pub struct View<'a, H, L, const AXIS: usize> {
-	src: NonNull<H>,
+	src: &'a H,
 	axis: usize,
 	_logical: PhantomData<&'a L>,
 }
 
+
 impl<'a, H, L, const AXIS: usize> View<'a, H, L, AXIS> {
-	pub unsafe fn new_unchecked(src: &H, axis: usize) -> Self {
+	pub(crate) unsafe fn new_unchecked(src: &'a H, axis: usize) -> Self {
 		Self {
-			src: NonNull::from(src),
+			src,
 			axis,
 			_logical: PhantomData,
 		}
@@ -29,7 +30,7 @@ where
 	pub fn item(&self, position: L) -> Option<&H::Item> {
 		let position = H::attach_axis(position, self.axis);
 
-		unsafe { self.src.as_ref().item(position) }
+		self.src.item(position)
 	}
 }
 
@@ -40,7 +41,7 @@ pub struct ViewMut<'a, H, L, const AXIS: usize> {
 }
 
 impl<'a, H, L, const AXIS: usize> ViewMut<'a, H, L, AXIS> {
-	pub unsafe fn new_unchecked(src: &mut H, axis: usize) -> Self {
+	pub(crate) unsafe fn new_unchecked(src: &'a mut H, axis: usize) -> Self {
 		Self {
 			src: NonNull::from(src),
 			axis,
