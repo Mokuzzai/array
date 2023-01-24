@@ -207,3 +207,18 @@ unsafe impl DetachAxis<3> for [usize; 3] {
 		[a, b]
 	}
 }
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn test_attach() {
+		let a = [3, 5];
+
+		let a = AttachAxis::<1>::attach_axis(a, 4);
+
+		assert_eq!(a, [3, 4, 5]);
+
+	}
+}

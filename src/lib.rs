@@ -75,8 +75,6 @@ pub unsafe trait ReadOnlyArrayBase: Sized {
 	type Item;
 	type Shape: Shape;
 
-	// const SHAPE: Self::Shape;
-
 	fn shape(&self) -> Self::Shape;
 
 	fn item(&self, position: Self::Shape) -> Option<&Self::Item>;
@@ -155,38 +153,26 @@ impl_array! { Axis4, 4, _0, _1, _3, _4 }
 
 unsafe impl<T, const A: usize> Axies<0> for Axis1<T, A> {
 	type Axis = [usize; 0];
-
-	// const SHAPE: Self::Axis = [];
 }
 
 unsafe impl<T, const A: usize, const B: usize> Axies<0> for Axis2<T, A, B> {
 	type Axis = [usize; 1];
-
-	// const SHAPE: Self::Axis = [B];
 }
 
 unsafe impl<T, const A: usize, const B: usize> Axies<1> for Axis2<T, A, B> {
 	type Axis = [usize; 1];
-
-	// const SHAPE: Self::Axis = [A];
 }
 
 unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<0> for Axis3<T, A, B, C> {
 	type Axis = [usize; 2];
-
-	// const SHAPE: Self::Axis = [B, C];
 }
 
 unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<1> for Axis3<T, A, B, C> {
 	type Axis = [usize; 2];
-
-	// const SHAPE: Self::Axis = [A, C];
 }
 
 unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<2> for Axis3<T, A, B, C> {
 	type Axis = [usize; 2];
-
-	// const SHAPE: Self::Axis = [A, B];
 }
 
 unsafe impl<T, const A: usize> AxiesMut<0> for Axis1<T, A> {}
