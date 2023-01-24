@@ -33,7 +33,7 @@ where
 	H::Shape: DetachAxis<AXIS, Output = L>,
 	L: Shape + AttachAxis<AXIS, Output = H::Shape>,
 {
-	pub fn iter(&self) -> impl Iterator<Item = &H::Item> {
+	pub fn iter(&'a self) -> Iter<'a, H, L, AXIS>  {
 		Iter::new(self)
 	}
 }
