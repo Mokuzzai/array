@@ -1,3 +1,5 @@
+use crate::Positions;
+
 pub fn subd<const N: usize>(extents: [usize; N], dim: usize) -> usize {
 	extents.into_iter().take(dim).product()
 }
@@ -36,16 +38,22 @@ pub unsafe trait Shape: Sized {
 	const DIMENSIONS: usize;
 	const ZERO: Self;
 
+	type Positions: Iterator<Item = Self>;
+
 	fn capacity(&self) -> usize;
 	fn get(&self, axis: usize) -> usize;
 	fn set(&mut self, axis: usize, value: usize);
 	fn position_to_index(&self, position: Self) -> Option<usize>;
 	fn index_to_position(&self, index: usize) -> Option<Self>;
+
+	fn positions(&self) -> Self::Positions;
 }
 
 unsafe impl<const N: usize> Shape for [usize; N] {
 	const DIMENSIONS: usize = N;
 	const ZERO: Self = [0; N];
+
+	type Positions = Positions<N>;
 
 	fn capacity(&self) -> usize {
 		subd(*self, Self::DIMENSIONS)
@@ -61,6 +69,10 @@ unsafe impl<const N: usize> Shape for [usize; N] {
 	}
 	fn index_to_position(&self, index: usize) -> Option<Self> {
 		index_to_position(*self, index)
+	}
+
+	fn positions(&self) -> Self::Positions {
+		Positions::new(*self)
 	}
 }
 

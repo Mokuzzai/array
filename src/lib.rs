@@ -1,9 +1,12 @@
 mod array;
+mod positions;
 mod shape;
 mod view;
 
-pub use shape::DetachAxis;
+pub use positions::Positions;
+
 pub use shape::AttachAxis;
+pub use shape::DetachAxis;
 pub use shape::Shape;
 
 pub use crate::array::Array;
@@ -12,12 +15,28 @@ pub use view::View;
 pub use view::ViewMut;
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Singularity<T>(pub T);
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct Axis<T, const N: usize>(pub [T; N]);
+
+const _: () = {
+	use core::fmt::*;
+
+	impl<T: Debug> Debug for Singularity<T> {
+		fn fmt(&self, f: &mut Formatter) -> Result {
+			Debug::fmt(&self.0, f)
+		}
+	}
+
+	impl<T: Debug, const N: usize> Debug for Axis<T, N> {
+		fn fmt(&self, f: &mut Formatter) -> Result {
+			Debug::fmt(&self.0, f)
+		}
+	}
+};
 
 impl<T, const N: usize> Default for Axis<T, N>
 where
@@ -186,19 +205,29 @@ unsafe impl<T, const A: usize, const B: usize, const C: usize> AxiesMut<2> for A
 mod tests {
 	use super::*;
 
+	// TODO WRITE BETTER TESTS
+
 	#[test]
 	fn some_test() {
-		let some_array = Array3::<char, 10, 11, 12>::default();
+		let mut some_array = Array3::<u8, 3, 4, 5>::default();
 
-		let view1 = some_array.axis::<1>(4).unwrap();
+		let mut view1 = some_array.axis_mut::<1>(2).unwrap();
 
-		assert!(view1.shape() == [10, 12]);
+		assert!(view1.shape() == [3, 5]);
 
-		let view2 = view1.axis::<0>(4).unwrap();
+		let view2 = view1.axis_mut::<0>(2).unwrap();
 
-		assert!(view2.shape() == [12]);
+		assert!(view2.shape() == [5]);
+
+		for item in view2.into_inner().iter_mut() {
+			*item = 7
+		}
+
+		assert!(
+			format!("{:?}", view1)
+				== "Array { array: [0, 0, 7, 0, 0, 7, 0, 0, 7, 0, 0, 7, 0, 0, 7] }"
+		);
+
+		assert!(format!("{:#?}", some_array) == "Array { array: [[[0, 0, 0], [0, 0, 0], [0, 0, 7], [0, 0, 0]], [[0, 0, 0], [0, 0, 0], [0, 0, 7], [0, 0, 0]], [[0, 0, 0], [0, 0, 0], [0, 0, 7], [0, 0, 0]], [[0, 0, 0], [0, 0, 0], [0, 0, 7], [0, 0, 0]], [[0, 0, 0], [0, 0, 0], [0, 0, 7], [0, 0, 0]]] }");
 	}
-
-
 }
-
