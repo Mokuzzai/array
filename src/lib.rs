@@ -1,73 +1,15 @@
+mod array;
+mod shape;
 mod view;
+
+pub use shape::DetachAxis;
+pub use shape::AttachAxis;
+pub use shape::Shape;
+
+pub use crate::array::Array;
 
 pub use view::View;
 pub use view::ViewMut;
-
-pub fn subd<const N: usize>(extents: [usize; N], dim: usize) -> usize {
-	extents.into_iter().take(dim).product()
-}
-
-pub fn position_to_index<const N: usize>(
-	extents: [usize; N],
-	position: [usize; N],
-) -> Option<usize> {
-	(0..N).try_fold(0, |acc, i| {
-		let stride = extents[i];
-		let coordinate = position[i];
-
-		if coordinate >= stride {
-			return None;
-		}
-
-		Some(acc + coordinate * subd(extents, i))
-	})
-}
-
-pub fn index_to_position<const N: usize>(extents: [usize; N], index: usize) -> Option<[usize; N]> {
-	let capacity = extents.into_iter().product();
-
-	if index >= capacity {
-		return None;
-	}
-
-	let prev = 0;
-
-	Some(std::array::from_fn(|i| {
-		(index - prev) / subd(extents, i) % extents[i]
-	}))
-}
-
-pub unsafe trait Shape: Sized {
-	const DIMENSIONS: usize;
-	const ZERO: Self;
-
-	fn capacity(&self) -> usize;
-	fn get(&self, axis: usize) -> usize;
-	fn set(&mut self, axis: usize, value: usize);
-	fn position_to_index(&self, position: Self) -> Option<usize>;
-	fn index_to_position(&self, index: usize) -> Option<Self>;
-}
-
-unsafe impl<const N: usize> Shape for [usize; N] {
-	const DIMENSIONS: usize = N;
-	const ZERO: Self = [0; N];
-
-	fn capacity(&self) -> usize {
-		subd(*self, Self::DIMENSIONS)
-	}
-	fn get(&self, axis: usize) -> usize {
-		self[axis]
-	}
-	fn set(&mut self, axis: usize, value: usize) {
-		self[axis] = value
-	}
-	fn position_to_index(&self, position: Self) -> Option<usize> {
-		position_to_index(*self, position)
-	}
-	fn index_to_position(&self, index: usize) -> Option<Self> {
-		index_to_position(*self, index)
-	}
-}
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
@@ -75,14 +17,34 @@ pub struct Singularity<T>(pub T);
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct Axis<T, const D: usize, const N: usize>(pub [T; N]);
+pub struct Axis<T, const N: usize>(pub [T; N]);
 
-pub type Array0<T> = Singularity<T>;
-pub type Array1<T, const A: usize> = Axis<Array0<T>, 1, A>;
-pub type Array2<T, const A: usize, const B: usize> = Axis<Array1<T, A>, 2, B>;
-pub type Array3<T, const A: usize, const B: usize, const C: usize> = Axis<Array2<T, A, B>, 3, C>;
-pub type Array4<T, const A: usize, const B: usize, const C: usize, const D: usize> =
-	Axis<Array3<T, A, B, C>, 4, D>;
+impl<T, const N: usize> Default for Axis<T, N>
+where
+	T: Default,
+{
+	fn default() -> Self {
+		Self(std::array::from_fn(|_| Default::default()))
+	}
+}
+
+pub type Axis0<T> = Singularity<T>;
+pub type Axis1<T, const A: usize> = Axis<Axis0<T>, A>;
+pub type Axis2<T, const A: usize, const B: usize> = Axis<Axis1<T, A>, B>;
+pub type Axis3<T, const A: usize, const B: usize, const C: usize> = Axis<Axis2<T, A, B>, C>;
+pub type Axis4<T, const A: usize, const B: usize, const C: usize, const D: usize> =
+	Axis<Axis3<T, A, B, C>, D>;
+
+pub type Array0<T> = Array<Axis0<T>>;
+pub type Array1<T, const _0: usize> = Array<Axis1<T, _0>>;
+pub type Array2<T, const _0: usize, const _1: usize> = Array<Axis2<T, _0, _1>>;
+pub type Array3<T, const _0: usize, const _1: usize, const _2: usize> = Array<Axis3<T, _0, _1, _2>>;
+pub type Array4<T, const _0: usize, const _1: usize, const _2: usize, const _3: usize> =
+	Array<Axis4<T, _0, _1, _2, _3>>;
+
+pub type Cubic2<T, const _0: usize> = Array2<T, _0, _0>;
+pub type Cubic3<T, const _0: usize> = Array3<T, _0, _0, _0>;
+pub type Cubic4<T, const _0: usize> = Array4<T, _0, _0, _0, _0>;
 
 /// Base trait implemented by all [`Array`]s
 ///
@@ -90,240 +52,153 @@ pub type Array4<T, const A: usize, const B: usize, const C: usize, const D: usiz
 ///
 /// The safety requirements of this trait are unspecified and implementing it is unsafe
 ///
-pub unsafe trait Array: Sized {
+pub unsafe trait ReadOnlyArrayBase: Sized {
 	type Item;
 	type Shape: Shape;
 
-	const SHAPE: Self::Shape;
+	// const SHAPE: Self::Shape;
 
-	fn shape(&self) -> Self::Shape {
-		Self::SHAPE
-	}
+	fn shape(&self) -> Self::Shape;
 
-	fn as_ptr(&self) -> *const Self::Item {
-		self as *const Self as *const Self::Item
-	}
-
-	fn as_mut_ptr(&mut self) -> *mut Self::Item {
-		self as *mut Self as *mut Self::Item
-	}
-
-	fn as_slice(&self) -> &[Self::Item] {
-		unsafe { std::slice::from_raw_parts(self.as_ptr(), Self::SHAPE.capacity()) }
-	}
-
-	fn as_mut_slice(&mut self) -> &mut [Self::Item] {
-		unsafe { std::slice::from_raw_parts_mut(self.as_mut_ptr(), Self::SHAPE.capacity()) }
-	}
-
-	fn item(&self, position: Self::Shape) -> Option<&Self::Item> {
-		self.as_slice()
-			.get(Self::SHAPE.position_to_index(position)?)
-	}
-	fn item_mut(&mut self, position: Self::Shape) -> Option<&mut Self::Item> {
-		self.as_mut_slice()
-			.get_mut(Self::SHAPE.position_to_index(position)?)
-	}
+	fn item(&self, position: Self::Shape) -> Option<&Self::Item>;
 }
 
-/// [`Array`] with a higher dimension
+pub unsafe trait MutableArrayBase: ReadOnlyArrayBase {
+	fn item_mut(&mut self, position: Self::Shape) -> Option<&mut Self::Item>;
+}
+
+/// Allow indexing into an `Array`
 ///
 /// # Safety
 ///
 /// The safety requirements of this trait are unspecified and implementing it is unsafe
 ///
-pub unsafe trait Higher {
-	type Higher<const N: usize>;
-}
-
-/// [`Array`] with a lower dimension
-///
-/// # Safety
-///
-/// The safety requirements of this trait are unspecified and implementing it is unsafe
-///
-pub unsafe trait Lower {
-	type Lower;
-
-	fn lower(&self, axis: usize) -> Option<&Self::Lower>;
-	fn lower_mut(&mut self, axis: usize) -> Option<&mut Self::Lower>;
-}
-
-/// Allow indexing into an [`Array`]
-///
-/// # Safety
-///
-/// The safety requirements of this trait are unspecified and implementing it is unsafe
-///
-pub unsafe trait Axies<const AXIS: usize>: Array {
+pub unsafe trait Axies<const AXIS: usize>: ReadOnlyArrayBase {
 	type Axis: Shape;
 
-	const SHAPE: Self::Axis;
-
 	fn axis(&self, axis: usize) -> Option<View<Self, Self::Axis, AXIS>> {
-		if axis >= <Self as Array>::SHAPE.get(AXIS) {
+		if axis >= self.shape().get(AXIS) {
 			return None;
 		}
 
 		Some(unsafe { View::new_unchecked(self, axis) })
 	}
+}
+
+/// Allow indexing into an `Array`
+///
+/// # Safety
+///
+/// The safety requirements of this trait are unspecified and implementing it is unsafe
+///
+pub unsafe trait AxiesMut<const AXIS: usize>: Axies<AXIS> {
 	fn axis_mut(&mut self, axis: usize) -> Option<ViewMut<Self, Self::Axis, AXIS>> {
-		if axis >= <Self as Array>::SHAPE.get(AXIS) {
+		if axis >= self.shape().get(AXIS) {
 			return None;
 		}
 
 		Some(unsafe { ViewMut::new_unchecked(self, axis) })
 	}
-
-	fn attach_axis(position: Self::Axis, axis: usize) -> <Self as Array>::Shape;
 }
 
-unsafe impl<T> Array for Array0<T> {
-	type Item = T;
-	type Shape = [usize; 0];
+macro_rules! impl_array {
+	( $Self:ident, $D:expr, $($A:ident),*) => {
+		unsafe impl<T, $(const $A: usize),*> ReadOnlyArrayBase for $Self<T, $($A),*> {
+			type Item = T;
+			type Shape = [usize; $D];
 
-	const SHAPE: Self::Shape = [];
-}
+			fn shape(&self) -> Self::Shape {
+				[$($A),*]
+			}
 
-unsafe impl<T, const A: usize> Array for Array1<T, A> {
-	type Item = T;
-	type Shape = [usize; 1];
+			fn item(&self, position: Self::Shape) -> Option<&Self::Item> {
+				let shape = self.shape();
 
-	const SHAPE: Self::Shape = [A];
-}
+				unsafe { std::slice::from_raw_parts(self as *const Self as *const Self::Item, shape.capacity()).get(shape.position_to_index(position)?) }
+			}
+		}
 
-unsafe impl<T, const A: usize, const B: usize> Array for Array2<T, A, B> {
-	type Item = T;
-	type Shape = [usize; 2];
+		unsafe impl<T, $(const $A: usize),*> MutableArrayBase for $Self<T, $($A),*> {
+			fn item_mut(&mut self, position: Self::Shape) -> Option<&mut Self::Item> {
+				let shape = self.shape();
 
-	const SHAPE: Self::Shape = [A, B];
-}
-
-unsafe impl<T, const A: usize, const B: usize, const C: usize> Array for Array3<T, A, B, C> {
-	type Item = T;
-	type Shape = [usize; 3];
-
-	const SHAPE: Self::Shape = [A, B, C];
-}
-
-unsafe impl<T> Higher for Array0<T> {
-	type Higher<const N: usize> = Array1<T, N>;
-}
-
-unsafe impl<T, const A: usize> Higher for Array1<T, A> {
-	type Higher<const B: usize> = Array2<T, A, B>;
-}
-
-unsafe impl<T, const A: usize, const B: usize> Higher for Array2<T, A, B> {
-	type Higher<const C: usize> = Array3<T, A, B, C>;
-}
-
-unsafe impl<T, const A: usize, const B: usize, const C: usize> Higher for Array3<T, A, B, C> {
-	type Higher<const D: usize> = Array4<T, A, B, C, D>;
-}
-
-unsafe impl<T, const A: usize> Lower for Array1<T, A> {
-	type Lower = Array0<T>;
-
-	fn lower(&self, axis: usize) -> Option<&Self::Lower> {
-		self.0.get(axis)
-	}
-	fn lower_mut(&mut self, axis: usize) -> Option<&mut Self::Lower> {
-		self.0.get_mut(axis)
+				unsafe { std::slice::from_raw_parts_mut(self as *mut Self as *mut Self::Item, shape.capacity()).get_mut(shape.position_to_index(position)?) }
+			}
+		}
 	}
 }
 
-unsafe impl<T, const A: usize, const B: usize> Lower for Array2<T, A, B> {
-	type Lower = Array1<T, A>;
+impl_array! { Axis0, 0, }
+impl_array! { Axis1, 1, _0 }
+impl_array! { Axis2, 2, _0, _1 }
+impl_array! { Axis3, 3, _0, _1, _3 }
+impl_array! { Axis4, 4, _0, _1, _3, _4 }
 
-	fn lower(&self, axis: usize) -> Option<&Self::Lower> {
-		self.0.get(axis)
-	}
-	fn lower_mut(&mut self, axis: usize) -> Option<&mut Self::Lower> {
-		self.0.get_mut(axis)
-	}
-}
-
-unsafe impl<T, const A: usize, const B: usize, const C: usize> Lower for Array3<T, A, B, C> {
-	type Lower = Array2<T, A, B>;
-
-	fn lower(&self, axis: usize) -> Option<&Self::Lower> {
-		self.0.get(axis)
-	}
-	fn lower_mut(&mut self, axis: usize) -> Option<&mut Self::Lower> {
-		self.0.get_mut(axis)
-	}
-}
-
-unsafe impl<T, const A: usize, const B: usize, const C: usize, const D: usize> Lower
-	for Array4<T, A, B, C, D>
-{
-	type Lower = Array3<T, A, B, C>;
-
-	fn lower(&self, axis: usize) -> Option<&Self::Lower> {
-		self.0.get(axis)
-	}
-	fn lower_mut(&mut self, axis: usize) -> Option<&mut Self::Lower> {
-		self.0.get_mut(axis)
-	}
-}
-
-unsafe impl<T, const A: usize> Axies<0> for Array1<T, A> {
+unsafe impl<T, const A: usize> Axies<0> for Axis1<T, A> {
 	type Axis = [usize; 0];
 
-	const SHAPE: Self::Axis = [];
-
-	fn attach_axis([]: Self::Axis, axis: usize) -> <Self as Array>::Shape {
-		[axis]
-	}
+	// const SHAPE: Self::Axis = [];
 }
 
-unsafe impl<T, const A: usize, const B: usize> Axies<0> for Array2<T, A, B> {
+unsafe impl<T, const A: usize, const B: usize> Axies<0> for Axis2<T, A, B> {
 	type Axis = [usize; 1];
 
-	const SHAPE: Self::Axis = [B];
-
-	fn attach_axis([b]: Self::Axis, axis: usize) -> <Self as Array>::Shape {
-		[axis, b]
-	}
+	// const SHAPE: Self::Axis = [B];
 }
 
-unsafe impl<T, const A: usize, const B: usize> Axies<1> for Array2<T, A, B> {
+unsafe impl<T, const A: usize, const B: usize> Axies<1> for Axis2<T, A, B> {
 	type Axis = [usize; 1];
 
-	const SHAPE: Self::Axis = [A];
-
-	fn attach_axis([a]: Self::Axis, axis: usize) -> <Self as Array>::Shape {
-		[a, axis]
-	}
+	// const SHAPE: Self::Axis = [A];
 }
 
-unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<0> for Array3<T, A, B, C> {
+unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<0> for Axis3<T, A, B, C> {
 	type Axis = [usize; 2];
 
-	const SHAPE: Self::Axis = [B, C];
-
-	fn attach_axis([b, c]: Self::Axis, axis: usize) -> <Self as Array>::Shape {
-		[axis, b, c]
-	}
+	// const SHAPE: Self::Axis = [B, C];
 }
 
-unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<1> for Array3<T, A, B, C> {
+unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<1> for Axis3<T, A, B, C> {
 	type Axis = [usize; 2];
 
-	const SHAPE: Self::Axis = [A, C];
-
-	fn attach_axis([a, c]: Self::Axis, axis: usize) -> <Self as Array>::Shape {
-		[a, axis, c]
-	}
+	// const SHAPE: Self::Axis = [A, C];
 }
 
-unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<2> for Array3<T, A, B, C> {
+unsafe impl<T, const A: usize, const B: usize, const C: usize> Axies<2> for Axis3<T, A, B, C> {
 	type Axis = [usize; 2];
 
-	const SHAPE: Self::Axis = [A, B];
-
-	fn attach_axis([a, b]: Self::Axis, axis: usize) -> <Self as Array>::Shape {
-		[a, b, axis]
-	}
+	// const SHAPE: Self::Axis = [A, B];
 }
+
+unsafe impl<T, const A: usize> AxiesMut<0> for Axis1<T, A> {}
+
+unsafe impl<T, const A: usize, const B: usize> AxiesMut<0> for Axis2<T, A, B> {}
+
+unsafe impl<T, const A: usize, const B: usize> AxiesMut<1> for Axis2<T, A, B> {}
+
+unsafe impl<T, const A: usize, const B: usize, const C: usize> AxiesMut<0> for Axis3<T, A, B, C> {}
+
+unsafe impl<T, const A: usize, const B: usize, const C: usize> AxiesMut<1> for Axis3<T, A, B, C> {}
+
+unsafe impl<T, const A: usize, const B: usize, const C: usize> AxiesMut<2> for Axis3<T, A, B, C> {}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn some_test() {
+		let some_array = Array3::<char, 10, 11, 12>::default();
+
+		let view1 = some_array.axis::<1>(4).unwrap();
+
+		assert!(view1.shape() == [10, 12]);
+
+		let view2 = view1.axis::<0>(4).unwrap();
+
+		assert!(view2.shape() == [12]);
+	}
+
+
+}
+

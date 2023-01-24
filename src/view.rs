@@ -1,8 +1,11 @@
 use std::marker::PhantomData;
 use std::ptr::NonNull;
 
-use crate::Array;
+use crate::AttachAxis;
+use crate::DetachAxis;
 use crate::Axies;
+use crate::MutableArrayBase;
+use crate::ReadOnlyArrayBase;
 use crate::Shape;
 
 pub struct View<'a, H, L, const AXIS: usize> {
@@ -11,7 +14,6 @@ pub struct View<'a, H, L, const AXIS: usize> {
 	_logical: PhantomData<&'a H>,
 	_shape: PhantomData<L>,
 }
-
 
 impl<'a, H, L, const AXIS: usize> View<'a, H, L, AXIS> {
 	pub(crate) unsafe fn new_unchecked(src: &'a H, axis: usize) -> Self {
@@ -24,17 +26,35 @@ impl<'a, H, L, const AXIS: usize> View<'a, H, L, AXIS> {
 	}
 }
 
-impl<'a, H, L, const AXIS: usize> View<'a, H, L, AXIS>
+unsafe impl<'a, H, L, const AXIS: usize> ReadOnlyArrayBase for View<'a, H, L, AXIS>
 where
-	H: Array + Axies<AXIS, Axis = L>,
-	L: Shape,
+	H: ReadOnlyArrayBase + Axies<AXIS, Axis = L>,
+	H::Shape: DetachAxis<AXIS, Output = L>,
+	L: Shape + AttachAxis<AXIS, Output = H::Shape>,
 {
-	pub fn item(&self, position: L) -> Option<&H::Item> {
-		let position = H::attach_axis(position, self.axis);
+	type Item = H::Item;
+	type Shape = L;
+
+	fn shape(&self) -> Self::Shape {
+		self.src.shape().detach_axis()
+	}
+
+	fn item(&self, position: L) -> Option<&H::Item> {
+		let position = position.attach_axis(self.axis);
 
 		self.src.item(position)
 	}
 }
+
+unsafe impl<'a, H, L, const AXIS: usize, const N: usize> Axies<N> for View<'a, H, L, AXIS>
+where
+	H: ReadOnlyArrayBase + Axies<AXIS, Axis = L>,
+	H::Shape: DetachAxis<AXIS, Output = L>,
+	L: Shape + AttachAxis<AXIS, Output = H::Shape> + DetachAxis<N>,
+{
+	type Axis = <L as DetachAxis<N>>::Output;
+}
+
 
 pub struct ViewMut<'a, H, L, const AXIS: usize> {
 	///
@@ -66,20 +86,13 @@ pub struct ViewMut<'a, H, L, const AXIS: usize> {
 ///
 /// because `Self` is roughly `&'a mut H` if it is `Send` so is `Self`
 ///
-unsafe impl<'a, H, L, const AXIS: usize> Send for ViewMut<'a, H, L, AXIS>
-where
-	&'a mut H: Send,
-{}
+unsafe impl<'a, H, L, const AXIS: usize> Send for ViewMut<'a, H, L, AXIS> where &'a mut H: Send {}
 
 /// # Safety
 ///
 /// because `Self` is roughly `&'a mut H` if it is `Sync` so is `Self`
 ///
-unsafe impl<'a, H, L, const AXIS: usize> Sync for ViewMut<'a, H, L, AXIS>
-where
-	&'a mut H: Sync,
-{}
-
+unsafe impl<'a, H, L, const AXIS: usize> Sync for ViewMut<'a, H, L, AXIS> where &'a mut H: Sync {}
 
 impl<'a, H, L, const AXIS: usize> ViewMut<'a, H, L, AXIS> {
 	pub(crate) unsafe fn new_unchecked(src: &'a mut H, axis: usize) -> Self {
@@ -92,21 +105,37 @@ impl<'a, H, L, const AXIS: usize> ViewMut<'a, H, L, AXIS> {
 	}
 }
 
-impl<'a, H, L, const AXIS: usize> ViewMut<'a, H, L, AXIS>
+unsafe impl<'a, H, L, const AXIS: usize> ReadOnlyArrayBase for ViewMut<'a, H, L, AXIS>
 where
-	H: Array + Axies<AXIS, Axis = L>,
-	L: Shape,
+	H: ReadOnlyArrayBase + Axies<AXIS, Axis = L>,
+	H::Shape: DetachAxis<AXIS, Output = L>,
+	L: Shape + AttachAxis<AXIS, Output = H::Shape>,
 {
-	pub fn item(&self, position: L) -> Option<&H::Item> {
-		let position = H::attach_axis(position, self.axis);
+	type Item = H::Item;
+	type Shape = L;
+
+	fn shape(&self) -> Self::Shape {
+		unsafe { self.src.as_ref() }.shape().detach_axis()
+	}
+
+	fn item(&self, position: L) -> Option<&H::Item> {
+		let position = position.attach_axis(self.axis);
 
 		unsafe {
 			// SAFETY: `self.src` is a valid reference as per its invariant
 			self.src.as_ref().item(position)
 		}
 	}
-	pub fn item_mut(&mut self, position: L) -> Option<&mut H::Item> {
-		let position = H::attach_axis(position, self.axis);
+}
+
+unsafe impl<'a, H, L, const AXIS: usize> MutableArrayBase for ViewMut<'a, H, L, AXIS>
+where
+	H: MutableArrayBase + Axies<AXIS, Axis = L>,
+	H::Shape: DetachAxis<AXIS, Output = L>,
+	L: Shape + AttachAxis<AXIS, Output = H::Shape>,
+{
+	fn item_mut(&mut self, position: L) -> Option<&mut H::Item> {
+		let position = position.attach_axis(self.axis);
 
 		unsafe {
 			// SAFETY: `self.src` is a valid mutable reference as per its invariant
